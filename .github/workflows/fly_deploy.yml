@@ -12,7 +12,7 @@ jobs:
       - uses: superfly/flyctl-actions/setup-flyctl@master
       - name: deploy
         working-directory: ./fastapi-deployment
-        run: flyctl deploy --build-args MODEL_ARCHIVE_LINK=${{ vars.ART_MODEL_ARCHIVE_LINK}}
+        run: flyctl deploy --build-arg MODEL_ARCHIVE_LINK=${{ vars.ART_MODEL_ARCHIVE_LINK}}
         env:
           FLY_API_TOKEN: ${{ secrets.MODEL_FLY_DEPLOY_TOKEN }}
   
