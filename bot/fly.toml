@@ -7,6 +7,7 @@ primary_region = "ams"
 
 [env]
   MODEL_API_URL = "https://art-expert-chat-art-platform.fly.dev"
+  HUGGING_FACE_API_URL="https://api-inference.huggingface.co"
 
 [[services]]
   protocol = "tcp"

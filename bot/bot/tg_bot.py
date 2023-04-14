@@ -1,5 +1,7 @@
+import asyncio
 import random
 from io import BytesIO
+from pathlib import Path
 
 from coolname import generate
 from httpx import AsyncClient
@@ -13,6 +15,8 @@ from telegram.ext import (
     filters,
 )
 
+from bot import message_texts
+from bot.hugging_face_models_client import HuggingFaceModelsClient
 from bot.model_client import ModelClient
 from bot.settings import BotSettings
 
@@ -24,6 +28,19 @@ model_client = ModelClient(
     httpx_client=AsyncClient(),
 )
 
+hugging_face_client = HuggingFaceModelsClient(
+    hugging_face_api_url=settings.hugging_face_api_url,
+    hugging_face_token=settings.hugging_face_api_token,
+    httpx_client=AsyncClient(),
+    timeout=20,
+)
+
+LOGO_BYTES = (Path(__file__).parent.absolute() / "assets" / "logo.jpg").read_bytes()
+MEMES = [
+    file_path.read_bytes()
+    for file_path in (Path(__file__).parent.absolute() / "assets" / "memes").iterdir()
+]
+
 
 async def hello(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await update.message.reply_text(f"Hello {update.effective_user.first_name}")
@@ -31,11 +48,8 @@ async def hello(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Send a message when the command /start is issued."""
-    await update.message.reply_text(
-        f"Привет, {update.effective_user.first_name}! На связи ИИ. (Yes, I mean the ARTIFICIAL INTELLEGENCE). \n\n"
-        f"Я взял все картины проданные на аукционе sothebys.com и "
-        "обучил свою нейросеть, чтобы предсказать их стоимость.\n\n"
-        "Отправь мне фотографию своего рисунка и я скажу, how much bucks он может стоить.",
+    await update.message.reply_photo(
+        LOGO_BYTES, caption=message_texts.start(update.effective_user.first_name)
     )
 
 
@@ -44,28 +58,42 @@ async def estimate_price(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     photo_file = await update.message.photo[-1].get_file()
     file_io = BytesIO()
     await photo_file.download_to_memory(out=file_io)
-    res = await model_client.predict(file_io)
+    file_io.seek(0)
+    file_bytes = file_io.read()
+    tasks = (
+        model_client.predict(file_bytes),
+        hugging_face_client.generate_caption_for_image(file_bytes),
+    )
+    prediction_result, image_caption = await asyncio.gather(*tasks)
 
-    pic_name = " ".join(generate(random.randint(2, 5))).capitalize()
-    caption = f"""Original Title: {random.choice(["Unknown", pic_name])}
-Author: {{author}}
-Date: {random.choice(["2023", "Beginning of XXI century", "2020-es"])}
-Estimated price: {{price}} $ [Sothebys auction]
-Style: {random.choice(["Surrealism", "Realism", "Abstract Art", "Impressionism"])}
-Genre: {random.choice(["animal painting", "portrait", "abstract", "illustration", "sketch and study", "figurative", "landscape"])}
-Media: {random.choice(["oil", "pencil", "photo"])}
-Similar painting: https://www.sothebys.com/en/buy/fine-art/paintings/abstract/_eve-ackroyd-woman-as-still-life-4eb9
-    """
-    # Price is estimated using Sothebys.com data
-    # Other characteristics can be predicted using Wikiart data
+    response_text = message_texts.image_description(
+        price=prediction_result.price, caption=image_caption
+    )
 
     await update.message.reply_photo(
-        update.message.photo[-1].file_id,
-        caption=caption.format(
-            price=res.price,
-            author=update.effective_user.full_name,
-        ),
+        update.message.photo[-1].file_id, caption=response_text, parse_mode="HTML"
     )
+
+    similar_image = await hugging_face_client.generate_image_by_caption(
+        f"strange {image_caption}"
+    )
+    similar_image_prediction_result = await model_client.predict(similar_image)
+
+    await update.message.reply_photo(
+        similar_image,
+        caption=message_texts.similar_image_description(
+            similar_image_prediction_result.price
+        ),
+        parse_mode="HTML",
+    )
+
+    await asyncio.sleep(15)
+    await update.message.reply_text(
+        message_texts.meme_prelude(),
+        parse_mode="HTML",
+    )
+    await asyncio.sleep(5)
+    await update.message.reply_photo(random.choice(MEMES))
 
 
 def create_app() -> Application:
