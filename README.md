@@ -8,4 +8,3 @@ Deploy something like https://t.me/AIArtExpertBot
 Read more about tools used:
 - A simple solution for monitoring ML systems (FastAPI + Prometheus + Grafana) https://www.jeremyjordan.me/ml-monitoring/
 - Python Telegram Bot https://python-telegram-bot.org
-- 
